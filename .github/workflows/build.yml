@@ -8,6 +8,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: 'true'
 
       - name: Build sdist
         run: pipx run build --sdist
@@ -27,6 +29,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: 'true'
 
       - name: Set up QEMU
         if: runner.os == 'Linux'
