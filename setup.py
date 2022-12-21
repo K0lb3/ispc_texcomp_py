@@ -72,8 +72,8 @@ class build_ext_ispc(build_ext):
 
         super().build_extension(ext)
 
-    def __del__(self):
-        super().__del__()
+    # def __del__(self):
+        # super().__del__()
         # cleanup build dirs
         # import shutil
 

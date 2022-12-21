@@ -47,20 +47,20 @@ static PyObject *py_compress(PyObject *self, PyObject *args)
             PyErr_SetString(PyExc_TypeError, "src must be a RGBASurface");                        \
             return NULL;                                                                          \
         }                                                                                         \
-        if (!PyObject_TypeCheck(py_settings, &##settings_object_type))                            \
+        if (!PyObject_TypeCheck(py_settings, &settings_object_type))                            \
         {                                                                                         \
             PyErr_SetString(PyExc_TypeError, "src must be a " #settings_object_type);             \
             return NULL;                                                                          \
         }                                                                                         \
         rgba_surface *src = &((RGBASurfaceObject *)py_src)->surf;                                 \
         size_t size = src->width * src->height;                                                   \
-        if (##ratio > 1)                                                                          \
+        if (ratio > 1)                                                                          \
         {                                                                                         \
             size /= ratio;                                                                        \
         }                                                                                         \
         uint8_t *dst = (uint8_t *)PyMem_Malloc(size);                                             \
-        ##settings_type *settings = &((##settings_object *)py_settings)->settings;                \
-        ##F(src, dst, settings);                                                                  \
+        settings_type *settings = &((settings_object *)py_settings)->settings;                \
+        F(src, dst, settings);                                                                  \
         PyObject *result = PyBytes_FromStringAndSize((const char *)dst, size);                    \
         PyMem_Free(dst);                                                                          \
         return result;                                                                            \
