@@ -53,7 +53,7 @@ class build_ext_ispc(build_ext):
     def build_extension(self, ext):
         build_temp = os.path.realpath(self.build_temp)
         # fetch ispc compiler
-        ispc = fetch_ispc_compiler(self.build_temp)
+        ispc = fetch_ispc_compiler(build_temp)
         # remove ispc files from sources
         ispc_files = []
         i = 0
@@ -73,14 +73,14 @@ class build_ext_ispc(build_ext):
         super().build_extension(ext)
 
     # def __del__(self):
-        # super().__del__()
-        # cleanup build dirs
-        # import shutil
+    # super().__del__()
+    # cleanup build dirs
+    # import shutil
 
-        # if os.path.exists(self.build_temp):
-        #     shutil.rmtree(self.build_temp)
-        # if os.path.exists(self.build_lib):
-        #     shutil.rmtree(self.build_lib)
+    # if os.path.exists(self.build_temp):
+    #     shutil.rmtree(self.build_temp)
+    # if os.path.exists(self.build_lib):
+    #     shutil.rmtree(self.build_lib)
 
     def build_ispc(self, ispc, ispc_files):
         system = platform.system()
