@@ -29,6 +29,7 @@ ISPC_TEXCOMP_DIR = os.path.join(LOCAL, "src", "ISPCTextureCompressor", "ispc_tex
 def build():
     setup(
         name="ispc_texcomp_py",
+        version = __version__,
         ext_modules=[
             Pybind11Extension(
                 name="ispc_texcomp_py",
@@ -73,6 +74,16 @@ class build_ext_ispc(build_ext):
 
         super().build_extension(ext)
 
+    def __del__(self):
+        super().__del__()
+        # cleanup build dirs
+        import shutil
+
+        if os.path.exists(self.build_temp):
+            shutil.rmtree(self.build_temp)
+        if os.path.exists(self.build_lib):
+            shutil.rmtree(self.build_lib)
+
     def build_ispc(self, ispc, ispc_files):
         system = platform.system()
         machine = platform.machine()
@@ -95,7 +106,7 @@ class build_ext_ispc(build_ext):
             if arch == "32bit":
                 arch = "x86"
             else:
-                arch = "amd64"
+                arch = "x86-64"
         else:
             targets = ["sse2", "avx"]
             if arch == "32bit":
