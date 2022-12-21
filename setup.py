@@ -7,10 +7,8 @@ import tarfile
 from urllib.request import urlopen, Request
 import zipfile
 
-
-# Available at setup time due to pyproject.toml
-from pybind11.setup_helpers import Pybind11Extension, build_ext
-from setuptools import setup
+from setuptools import setup, Extension
+from setuptools.command.build_ext import build_ext
 
 
 __version__ = "0.0.1"
@@ -29,9 +27,9 @@ ISPC_TEXCOMP_DIR = os.path.join(LOCAL, "src", "ISPCTextureCompressor", "ispc_tex
 def build():
     setup(
         name="ispc_texcomp_py",
-        version = __version__,
+        version=__version__,
         ext_modules=[
-            Pybind11Extension(
+            Extension(
                 name="ispc_texcomp_py",
                 sources=[
                     "src/ispc_texcomp_py.cpp",
@@ -77,12 +75,12 @@ class build_ext_ispc(build_ext):
     def __del__(self):
         super().__del__()
         # cleanup build dirs
-        import shutil
+        # import shutil
 
-        if os.path.exists(self.build_temp):
-            shutil.rmtree(self.build_temp)
-        if os.path.exists(self.build_lib):
-            shutil.rmtree(self.build_lib)
+        # if os.path.exists(self.build_temp):
+        #     shutil.rmtree(self.build_temp)
+        # if os.path.exists(self.build_lib):
+        #     shutil.rmtree(self.build_lib)
 
     def build_ispc(self, ispc, ispc_files):
         system = platform.system()

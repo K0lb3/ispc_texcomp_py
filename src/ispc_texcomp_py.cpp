@@ -1,125 +1,123 @@
 #define PY_SSIZE_T_CLEAN /* Make "s#" use Py_ssize_t rather than int. */
 #include <Python.h>
-#include <pybind11/pybind11.h>
-using namespace pybind11::literals;
-namespace py = pybind11;
-
 #include "ispc_texcomp.h"
 
-PYBIND11_MODULE(ispc_texcomp_py, m)
+#include "rgba_surface_py.hpp"
+#include "settings.hpp"
+
+typedef void (*compress_f)(const rgba_surface *, uint8_t *dst);
+
+template <compress_f F, char ratio>
+static PyObject *py_compress(PyObject *self, PyObject *args)
 {
-    m.doc() = "pbrt python bindings"; // optional module docstring
-    py::class_<rgba_surface>(m, "rgba_surface")
-        .def(py::init<>())
-        .def_readwrite("width", &rgba_surface::width)
-        .def_readwrite("height", &rgba_surface::height)
-        .def_readwrite("stride", &rgba_surface::stride)
-        .def_property(
-            "ptr", [](rgba_surface &self) -> py::memoryview {
-                return py::memoryview::from_buffer(self.ptr, {self.height*self.stride},{sizeof(char)});
-            }, [](rgba_surface &self, std::string string){
-                if (self.ptr != NULL){
-                    free(self.ptr);
-                }
-                self.ptr = (uint8_t*)malloc(string.size());
-                memcpy(self.ptr, string.data(), string.size());
-            }
-        );
+    printf("py_compress\n");
+    PyObject *py_src;
+    if (!PyArg_ParseTuple(args, "O", &py_src))
+        return NULL;
 
-    py::class_<bc7_enc_settings>(m, "bc7_enc_settings")
-        .def(py::init<>())
-        .def_readwrite("skip_mode2", &bc7_enc_settings::skip_mode2)
-        .def_readwrite("fastSkipTreshold_mode1", &bc7_enc_settings::fastSkipTreshold_mode1)
-        .def_readwrite("fastSkipTreshold_mode3", &bc7_enc_settings::fastSkipTreshold_mode3)
-        .def_readwrite("fastSkipTreshold_mode7", &bc7_enc_settings::fastSkipTreshold_mode7)
-        .def_readwrite("mode45_channel0", &bc7_enc_settings::mode45_channel0)
-        .def_readwrite("refineIterations_channel", &bc7_enc_settings::refineIterations_channel)
-        .def_readwrite("channels", &bc7_enc_settings::channels)
-        .def_property(
-            "mode_selection", [](bc7_enc_settings &settings) -> py::memoryview
-            { return py::memoryview::from_buffer(
-                  settings.mode_selection,
-                  {4},
-                  {sizeof(bool)}); },
-            [](bc7_enc_settings &settings, py::object obj)
-            {
-                py::list list = obj.cast<py::list>();
-                if (list.size() != 4)
-                    throw pybind11::value_error("mode_selection must be a list of 4 bools");
-                for (int i = 0; i < 4; i++)
-                {
-                    settings.mode_selection[i] = list[i].cast<bool>();
-                }
-            })
-        .def_property(
-            "refineIterations", [](bc7_enc_settings &settings) -> py::memoryview
-            { return py::memoryview::from_buffer(
-                  settings.refineIterations,
-                  {8},
-                  {sizeof(int)}); },
-            [](bc7_enc_settings &settings, py::object obj)
-            {
-                py::list list = obj.cast<py::list>();
-                if (list.size() != 8)
-                    throw pybind11::value_error("refineIterations must be a list of 8 ints");
-                for (int i = 0; i < 8; i++)
-                {
-                    settings.refineIterations[i] = list[i].cast<int>();
-                }
-            });
+    if (!PyObject_TypeCheck(py_src, &RGBASurfaceType))
+    {
+        PyErr_SetString(PyExc_TypeError, "src must be a RGBASurface");
+        return NULL;
+    }
 
-    py::class_<bc6h_enc_settings>(m, "bc6h_enc_settings")
-        .def(py::init<>())
-        .def_readwrite("slow_mode", &bc6h_enc_settings::slow_mode)
-        .def_readwrite("fast_mode", &bc6h_enc_settings::fast_mode)
-        .def_readwrite("refineIterations_1p", &bc6h_enc_settings::refineIterations_1p)
-        .def_readwrite("refineIterations_2p", &bc6h_enc_settings::refineIterations_2p)
-        .def_readwrite("fastSkipTreshold", &bc6h_enc_settings::fastSkipTreshold);
+    rgba_surface *src = &((RGBASurfaceObject *)py_src)->surf;
+    size_t size = src->width * src->height;
+    if (ratio > 1)
+    {
+        size /= ratio;
+    }
+    uint8_t *dst = (uint8_t *)PyMem_Malloc(size);
+    F(src, dst);
+    PyObject *result = PyBytes_FromStringAndSize((const char *)dst, size);
+    PyMem_Free(dst);
+    printf("compress done\n");
+    return result;
+}
 
-    py::class_<etc_enc_settings>(m, "etc_enc_settings")
-        .def(py::init<>())
-        .def_readwrite("fastSkipTreshold", &etc_enc_settings::fastSkipTreshold);
+#define COMPRESS_W_SETTINGS(F, ratio, settings_object, settings_object_type, settings_type, name) \
+    static PyObject *py_compress_##name(PyObject *self, PyObject *args)                           \
+    {                                                                                             \
+        PyObject *py_src;                                                                         \
+        PyObject *py_settings;                                                                    \
+        if (!PyArg_ParseTuple(args, "OO", &py_src, &py_settings))                                 \
+            return NULL;                                                                          \
+        if (!PyObject_TypeCheck(py_src, &RGBASurfaceType))                                        \
+        {                                                                                         \
+            PyErr_SetString(PyExc_TypeError, "src must be a RGBASurface");                        \
+            return NULL;                                                                          \
+        }                                                                                         \
+        if (!PyObject_TypeCheck(py_settings, &##settings_object_type))                            \
+        {                                                                                         \
+            PyErr_SetString(PyExc_TypeError, "src must be a " #settings_object_type);             \
+            return NULL;                                                                          \
+        }                                                                                         \
+        rgba_surface *src = &((RGBASurfaceObject *)py_src)->surf;                                 \
+        size_t size = src->width * src->height;                                                   \
+        if (##ratio > 1)                                                                          \
+        {                                                                                         \
+            size /= ratio;                                                                        \
+        }                                                                                         \
+        uint8_t *dst = (uint8_t *)PyMem_Malloc(size);                                             \
+        ##settings_type *settings = &((##settings_object *)py_settings)->settings;                \
+        ##F(src, dst, settings);                                                                  \
+        PyObject *result = PyBytes_FromStringAndSize((const char *)dst, size);                    \
+        PyMem_Free(dst);                                                                          \
+        return result;                                                                            \
+    };
 
-    py::class_<astc_enc_settings>(m, "astc_enc_settings")
-        .def(py::init<>())
-        .def_readwrite("block_width", &astc_enc_settings::block_width)
-        .def_readwrite("block_height", &astc_enc_settings::block_height)
-        .def_readwrite("channels", &astc_enc_settings::channels)
-        .def_readwrite("fastSkipTreshold", &astc_enc_settings::fastSkipTreshold)
-        .def_readwrite("refineIterations", &astc_enc_settings::refineIterations);
+COMPRESS_W_SETTINGS(CompressBlocksBC6H, 1, BC6HEncSettingsObject, BC6HEncSettingsType, bc6h_enc_settings, BC6H)
+COMPRESS_W_SETTINGS(CompressBlocksBC7, 1, BC7EncSettingsObject, BC7EncSettingsType, bc7_enc_settings, BC7)
+COMPRESS_W_SETTINGS(CompressBlocksETC1, 1, ETCEncSettingsObject, ETCEncSettingsType, etc_enc_settings, ETC1)
+COMPRESS_W_SETTINGS(CompressBlocksASTC, 1, ASTCEncSettingsObject, ASTCEncSettingsType, astc_enc_settings, ASTC)
 
-    m.def("GetProfile_ultrafast", &GetProfile_ultrafast, "A function which returns a bc7_enc_settings");
-    m.def("GetProfile_veryfast", &GetProfile_veryfast, "A function which returns a bc7_enc_settings");
-    m.def("GetProfile_fast", &GetProfile_fast, "A function which returns a bc7_enc_settings");
-    m.def("GetProfile_basic", &GetProfile_basic, "A function which returns a bc7_enc_settings");
-    m.def("GetProfile_slow", &GetProfile_slow, "A function which returns a bc7_enc_settings");
+// Exported methods are collected in a table
+static struct PyMethodDef method_table[] = {
+    {"CompressBlocksBC1", (PyCFunction)py_compress<CompressBlocksBC1, 1>, METH_VARARGS, "compress a rgba_surface to "},
+    {"CompressBlocksBC3", (PyCFunction)py_compress<CompressBlocksBC3, 1>, METH_VARARGS, "compress a rgba_surface to "},
+    {"CompressBlocksBC4", (PyCFunction)py_compress<CompressBlocksBC4, 2>, METH_VARARGS, "compress a rgba_surface to "},
+    {"CompressBlocksBC5", (PyCFunction)py_compress<CompressBlocksBC5, 1>, METH_VARARGS, "compress a rgba_surface to "},
+    {"CompressBlocksBC6H", (PyCFunction)py_compress_BC6H, METH_VARARGS, "compress a rgba_surface to "},
+    {"CompressBlocksBC7", (PyCFunction)py_compress_BC7, METH_VARARGS, "compress a rgba_surface to "},
+    {"CompressBlocksETC1", (PyCFunction)py_compress_ETC1, METH_VARARGS, "compress a rgba_surface to "},
+    {"CompressBlocksASTC", (PyCFunction)py_compress_ASTC, METH_VARARGS, "compress a rgba_surface to "},
+    {NULL,
+     NULL,
+     0,
+     NULL} // Sentinel value ending the table
+};
 
-    m.def("GetProfile_alpha_ultrafast", &GetProfile_alpha_ultrafast, "A function which returns a bc7_enc_settings");
-    m.def("GetProfile_alpha_veryfast", &GetProfile_alpha_veryfast, "A function which returns a bc7_enc_settings");
-    m.def("GetProfile_alpha_fast", &GetProfile_alpha_fast, "A function which returns a bc7_enc_settings");
-    m.def("GetProfile_alpha_basic", &GetProfile_alpha_basic, "A function which returns a bc7_enc_settings");
-    m.def("GetProfile_alpha_slow", &GetProfile_alpha_slow, "A function which returns a bc7_enc_settings");
+// A struct contains the definition of a module
+static PyModuleDef ispc_texcomp_py_module = {
+    PyModuleDef_HEAD_INIT,
+    "ispc_texcomp_py", // Module name
+    "a python wrapper for Perfare's ispc_texcomp_py",
+    -1, // Optional size of the module state memory
+    method_table,
+    NULL, // Optional slot definitions
+    NULL, // Optional traversal function
+    NULL, // Optional clear function
+    NULL  // Optional module deallocation function
+};
 
-    m.def("GetProfile_bc6h_beryfast", &GetProfile_bc6h_veryfast, "A function which returns a bc6h_enc_settings");
-    m.def("GetProfile_bc6h_fast", &GetProfile_bc6h_fast, "A function which returns a bc6h_enc_settings");
-    m.def("GetProfile_bc6h_basic", &GetProfile_bc6h_basic, "A function which returns a bc6h_enc_settings");
-    m.def("GetProfile_bc6h_slow", &GetProfile_bc6h_slow, "A function which returns a bc6h_enc_settings");
-    m.def("GetProfile_bc6h_veryslow", &GetProfile_bc6h_veryslow, "A function which returns a bc6h_enc_settings");
+static void add_type(PyObject *m, PyTypeObject *obj, const char *name)
+{
+    if (PyType_Ready(obj) < 0)
+        return;
+    Py_INCREF(obj);
+    PyModule_AddObject(m, name, (PyObject *)obj);
+}
 
-    m.def("GetProfile_etc_slow", &GetProfile_etc_slow, "A function which returns a etc_enc_settings");
-
-    m.def("GetProfile_astc_fast", &GetProfile_astc_fast, "A function which returns a astc_enc_settings");
-    m.def("GetProfile_astc_alpha_fast", &GetProfile_astc_alpha_fast, "A function which returns a astc_enc_settings");
-    m.def("GetProfile_astc_alpha_slow", &GetProfile_astc_alpha_slow, "A function which returns a astc_enc_settings");
-
-    m.def("ReplicateBorders", &ReplicateBorders, "helper function to replicate border pixels for the desired block sizes (bpp = 32 or 64)");
-
-    m.def("CompressBlocksBC1", &CompressBlocksBC1, "Compresses an rgba_surface to BC1");
-    m.def("CompressBlocksBC3", &CompressBlocksBC3, "Compresses an rgba_surface to BC3");
-    m.def("CompressBlocksBC4", &CompressBlocksBC4, "Compresses an rgba_surface to BC4");
-    m.def("CompressBlocksBC5", &CompressBlocksBC5, "Compresses an rgba_surface to BC5");
-    m.def("CompressBlocksBC6H", &CompressBlocksBC6H, "Compresses an rgba_surface to BC6H");
-    m.def("CompressBlocksBC7", &CompressBlocksBC7, "Compresses an rgba_surface to BC7");
-    m.def("CompressBlocksETC1", &CompressBlocksETC1, "Compresses an rgba_surface to ETC1");
-    m.def("CompressBlocksASTC", &CompressBlocksASTC, "Compresses an rgba_surface to ASTC");
+// The module init function
+PyMODINIT_FUNC PyInit_ispc_texcomp_py(void)
+{
+    PyObject *m = PyModule_Create(&ispc_texcomp_py_module);
+    if (m == NULL)
+        return NULL;
+    add_type(m, &BC6HEncSettingsType, "BC6HEncSettings");
+    add_type(m, &BC7EncSettingsType, "BC7EncSettings");
+    add_type(m, &ETCEncSettingsType, "ETCEncSettings");
+    add_type(m, &ASTCEncSettingsType, "ASTCEncSettings");
+    add_type(m, &RGBASurfaceType, "RGBASurface");
+    return m;
 }
