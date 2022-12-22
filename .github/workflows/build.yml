@@ -39,6 +39,7 @@ jobs:
           path: ${{github.workspace}}/ISPC
 
   build_sdist:
+    needs: [fetch_ispc]
     runs-on: "ubuntu-20.04"
 
     steps:
