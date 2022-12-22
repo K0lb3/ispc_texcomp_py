@@ -23,9 +23,6 @@ jobs:
       - name: "Test"
         run: pytest -vs
 
-      - name: "CleanUp dist"
-        run: rm dist
-
       - name: "Build sdist"
         run: python setup.py sdist
 
