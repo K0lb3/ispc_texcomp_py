@@ -20,7 +20,7 @@ COMPILER_ZIP_REGEX = {
 }
 
 
-LOCAL = os.path.dirname(os.path.abspath(__file__))
+LOCAL = os.path.dirname(os.path.realpath(__file__))
 ISPC_TEXCOMP_DIR = os.path.join(LOCAL, "src", "ISPCTextureCompressor", "ispc_texcomp")
 
 
