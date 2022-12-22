@@ -20,10 +20,6 @@ COMPILER_ZIP_REGEX = {
 }
 
 
-LOCAL = os.path.dirname(os.path.realpath(__file__))
-ISPC_TEXCOMP_DIR = os.path.join(LOCAL, "src", "ISPCTextureCompressor", "ispc_texcomp")
-
-
 def build():
     setup(
         name="ispc_texcomp_py",
@@ -33,14 +29,14 @@ def build():
                 name="ispc_texcomp_py",
                 sources=[
                     "src/ispc_texcomp_py.cpp",
-                    os.path.join(ISPC_TEXCOMP_DIR, "ispc_texcomp.cpp"),
-                    os.path.join(ISPC_TEXCOMP_DIR, "ispc_texcomp_astc.cpp"),
-                    os.path.join(ISPC_TEXCOMP_DIR, "kernel.ispc"),
-                    os.path.join(ISPC_TEXCOMP_DIR, "kernel_astc.ispc"),
+                    "src/ISPCTextureCompressor/ispc_texcomp/ispc_texcomp.cpp",
+                    "src/ISPCTextureCompressor/ispc_texcomp/ispc_texcomp_astc.cpp",
+                    "src/ISPCTextureCompressor/ispc_texcomp/kernel.ispc",
+                    "src/ISPCTextureCompressor/ispc_texcomp/kernel_astc.ispc",
                 ],
                 # extra_objects=extra_objects,
                 language="c++",
-                include_dirs=[ISPC_TEXCOMP_DIR],
+                include_dirs=["src/ISPCTextureCompressor/ispc_texcomp"],
                 define_macros=[("VERSION_INFO", __version__)],
             ),
         ],
