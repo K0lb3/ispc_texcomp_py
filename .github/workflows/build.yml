@@ -12,21 +12,22 @@ jobs:
           submodules: "True"
 
       - name: "Install Python3"
-        uses: actions/setup-python@v3            
+        uses: actions/setup-python@v3
 
-      - name: "Install dependencies"
-        run:
-          python -m pip install pytest texture2ddecoder imagehash pytest
-      
       - name: "Install"
-        run:
-          pip install .
-          pytest -vs
-      
+        run: pip install .
+
+      - name: "Install test dependencies"
+        run: pip install pytest texture2ddecoder imagehash
+
+      - name: "Test"
+        run: pytest -vs
+
+      - name: "CleanUp dist"
+        run: rm dist
+
       - name: "Build sdist"
-        run:
-          rm dist
-          python setup.py sdist
+        run: python setup.py sdist
 
   build_wheels:
     needs: [build_sdist]
