@@ -11,7 +11,7 @@ draw.ellipse((32, 32, 256 - 32, 256 - 32), fill=(0, 255, 0, 255))
 draw.ellipse((64, 64, 256 - 64, 256 - 64), fill=(0, 0, 255, 255))
 draw.ellipse((96, 96, 256 - 96, 256 - 96), fill=(255, 255, 255, 255))
 SURFACE = ispc_texcomp_py.RGBASurface(
-    SAMPLE_IMG.tobytes(), SAMPLE_IMG.width, SAMPLE_IMG.height
+    SAMPLE_IMG.tobytes("raw", "RGBA"), SAMPLE_IMG.width, SAMPLE_IMG.height
 )
 
 
