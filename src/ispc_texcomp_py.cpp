@@ -10,7 +10,6 @@ typedef void (*compress_f)(const rgba_surface *, uint8_t *dst);
 template <compress_f F, char ratio>
 static PyObject *py_compress(PyObject *self, PyObject *args)
 {
-    printf("py_compress\n");
     PyObject *py_src;
     if (!PyArg_ParseTuple(args, "O", &py_src))
         return NULL;
@@ -31,7 +30,6 @@ static PyObject *py_compress(PyObject *self, PyObject *args)
     F(src, dst);
     PyObject *result = PyBytes_FromStringAndSize((const char *)dst, size);
     PyMem_Free(dst);
-    printf("compress done\n");
     return result;
 }
 
