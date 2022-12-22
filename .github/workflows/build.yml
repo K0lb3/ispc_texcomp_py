@@ -3,6 +3,41 @@ name: Build & Publish wheels
 on: [push, pull_request]
 
 jobs:
+  fetch_ispc:
+    # required to prevent getting blocked by github....
+    runs-on: "ubuntu-20.04"
+
+    steps:
+      - uses: actions/setup-python@v3
+    
+      - name: "Fetch ISPC Compiler"
+        run: |
+          $releases = wget https://api.github.com/repos/ispc/ispc/releases | ConvertFrom-Json
+
+          $windows_releases = $releases.assets | Where-Object -FilterScript {$_.name -like 'ispc-*-windows.zip'}
+          wget -O windows.zip $windows_releases[0].browser_download_url
+          mkdir ISPC/win
+          unzip -p windows.zip ispc-*-windows/bin/ispc.exe > ISPC/win/ispc.exe
+
+          $linux_releases = $release.assets | Where-Object -FilterScript {$_.name -like 'ispc-*-linux.tar.gz'}
+          wget -O linux.tar.gz $linux_releases[0].browser_download_url
+          tar -xvzf linux.tar.gz ispc-*-linux/bin/ispc
+          mv ispc-*-linux/bin/ispc ISPC/linux/ispc
+          rm linux.tar.gz
+
+          $darwin_releases = $release.assets | Where-Object -FilterScript {$_.name -like 'ispc-*-macos.tar.gz'}
+          wget -O darwin.tar.gz $darwin_releases[0].browser_download_url
+          tar -xvzf mac.tar.gz ispc-*-macOS/bin/ispc
+          mv ispc-*-macOS/bin/ispc ISPC/osx/ispc
+          rm mac.tar.gz
+        shell: pwsh
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: ISPC_compilers
+          path: ${{github.workspace}}/ISPC
+
   build_sdist:
     runs-on: "ubuntu-20.04"
 
@@ -10,6 +45,12 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: "True"
+
+      - name: Download AssetStudioUtility artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: ISPC_compilers
+          path: ${{github.workspace}}/ISPC
 
       - name: "Install Python3"
         uses: actions/setup-python@v3
@@ -38,6 +79,12 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: "True"
+
+      - name: Download AssetStudioUtility artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: ISPC_compilers
+          path: ${{github.workspace}}/ISPC
 
       # Used to host cibuildwheel
       - uses: actions/setup-python@v3
