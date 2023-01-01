@@ -5,7 +5,7 @@ on: [push, pull_request]
 jobs:
   fetch_ispc:
     # required to prevent getting blocked by github....
-    runs-on: "windows-20.04"
+    runs-on: "windows-latest"
 
     steps:
       - uses: actions/setup-python@v3
