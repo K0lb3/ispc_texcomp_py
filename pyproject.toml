@@ -1,15 +1,17 @@
 [build-system]
-requires = ["setuptools"]
+requires = [
+    "setuptools<72.2.0", # pp38 fails with higher setuptools
+    "wheel",
+]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ispc_texcomp_py"
-version = "0.1.0"
+name = "ispc_texcomp"
 authors = [{ name = "Rudolf Kolbe", email = "rkolbe96@gmail.com" }]
-description = "python bindings for ISPCTextureCompressor"
+description = "Python bindings for ISPCTextureCompressor"
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.6"
+requires-python = ">=3.11"
 keywords = [
     "python",
     "python3",
@@ -23,24 +25,40 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Intended Audience :: Developers",
-    "Development Status :: 5 - Production/Stable",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Topic :: Software Development :: Libraries :: Python Modules",
-    "Topic :: Games/Entertainment",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Multimedia :: Graphics",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
+dynamic = ["version"]
 
 [project.urls]
-"Homepage" = "https://github.com/K0lb3/UnityPy"
-"Bug Tracker" = "https://github.com/K0lb3/UnityPy/issues"
+"Homepage" = "https://github.com/K0lb3/ispc_texcomp_py"
+"Bug Tracker" = "https://github.com/K0lb3/ispc_texcomp_py/issues"
 
+[tool.setuptools.dynamic]
+version = { attr = "ispc_texcomp.__version__" }
 
-[tool.cibuildwheel]
-test-command = "python {project}/tests/test_main.py"
-test-skip = "*universal2:arm64"
-test-requires = [
-    "imagehash",
-    "texture2ddecoder",
-    "pillow"
+# tests
+[project.optional-dependencies]
+tests = ["pytest", "pillow", "imagehash", "texture2ddecoder"]
+
+[tool.ruff]
+include = [
+    "pyproject.toml",
+    "ispc_texcomp/*.py",
+    "ispc_texcomp/*.pyi",
+    "tests/*.py",
 ]
+
+[tool.ruff.lint]
+select = ["D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

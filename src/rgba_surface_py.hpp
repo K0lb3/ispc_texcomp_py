@@ -1,97 +1,68 @@
 #include <Python.h>
 #include "structmember.h"
 
+PyTypeObject *RGBASurfaceObjectType = nullptr;
+
 typedef struct
 {
     PyObject_HEAD
-        PyObject *obj;
-        rgba_surface surf;
+        Py_buffer view;
+    rgba_surface surf;
 } RGBASurfaceObject;
 
 void RGBASurface_dealloc(RGBASurfaceObject *self)
 {
-    Py_XDECREF(self->obj);
-    Py_TYPE(self)->tp_free((PyObject *)self);
-}
-
-PyObject *
-RGBASurface_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
-{
-    printf("RGBASurface_new\n");
-    RGBASurfaceObject *self;
-    self = (RGBASurfaceObject *)type->tp_alloc(type, 0);
-    if (self != NULL)
+    if (self->view.buf != nullptr)
     {
-        self->obj = NULL;
-        self->surf = {NULL, 0, 0, 0};
+        PyBuffer_Release(&self->view);
     }
-    return (PyObject *)self;
+    PyObject_Del((PyObject *)self);
 }
 
 int RGBASurface_init(RGBASurfaceObject *self, PyObject *args, PyObject *kwds)
 {
-    printf("RGBASurface_init\n");
-    const char *kwlist[] = {
+    self->view = {};
+    self->surf = {};
+
+    static const char *kwlist[] = {
         "src",
         "width",
         "height",
         "stride",
-        NULL};
+        nullptr};
 
-    PyObject *buf = NULL;
-    if (!PyArg_ParseTupleAndKeywords(
-            args,
-            kwds,
-            "Oii|i",
-            (char **)kwlist,
-            &buf,
-            &self->surf.width,
-            &self->surf.height,
-            &self->surf.stride))
-        return -1;
-    if (buf == NULL)
+    // Clear existing buffer if reinitialized
+    if (self->view.buf)
+        PyBuffer_Release(&self->view);
+
+    // Parse arguments
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "y*ii|i",
+                                     const_cast<char **>(kwlist),
+                                     &self->view,
+                                     &self->surf.width,
+                                     &self->surf.height,
+                                     &self->surf.stride))
     {
-        PyErr_SetString(PyExc_TypeError, "The src attribute value must be set!");
         return -1;
     }
 
-    Py_buffer view;
-    if (Py_TYPE(buf)->tp_as_buffer && Py_TYPE(buf)->tp_as_buffer->bf_releasebuffer)
-    {
-        buf = PyMemoryView_FromObject(buf);
-        if (buf == NULL)
-        {
-            return -1;
-        }
-    }
-    else
-    {
-        Py_INCREF(buf);
-    }
-
-    if (PyObject_GetBuffer(buf, &view, PyBUF_SIMPLE) < 0)
-    {
-        Py_DECREF(buf);
-        return -1;
-    }
-
-    self->obj = buf;
-    self->surf.ptr = (uint8_t *)view.buf;
-
+    // Auto-calculate stride if not provided
     if (self->surf.stride == 0)
     {
-        self->surf.stride = view.len / self->surf.height;
-    }
-    else
-    {
-        if (self->surf.stride * self->surf.height >= view.len)
-        {
-            PyErr_SetString(PyExc_TypeError, "The stride value is too big!\nIt has to be the size of a single row in bytes. (e.g. for RGBA -> 4 * width)");
-            return -1;
-        }
+        self->surf.stride = self->surf.width * 4; // RGBA
     }
 
-    PyBuffer_Release(&view);
+    // Validate geometry
+    const size_t expected_size = self->surf.stride * self->surf.height;
+    if (self->view.len < expected_size)
+    {
+        PyErr_Format(PyExc_ValueError,
+                     "Buffer too small (need %zu bytes, got %zd)",
+                     expected_size, self->view.len);
+        return -1;
+    }
+
+    self->surf.ptr = static_cast<uint8_t *>(self->view.buf);
     return 0;
 };
 
@@ -102,39 +73,14 @@ PyMemberDef RGBASurface_members[] = {
     {NULL} /* Sentinel */
 };
 
-PyObject *RGBASurface_getObj(RGBASurfaceObject *self, void *closure)
+PyObject *RGBASurface_getData(PyObject *self, void *closure)
 {
-    // TODO - is this correct?
-    Py_INCREF(self->obj);
-    return self->obj;
+    // leveraging the buffer protocol
+    return PyBytes_FromObject(self);
 }
-
-int RGBASurface_setObj(RGBASurfaceObject *self, PyObject *value, void *closure)
-{
-    if (value == NULL)
-    {
-        PyErr_SetString(PyExc_TypeError, "Cannot delete the obj attribute");
-        return -1;
-    }
-
-    Py_DECREF(self->obj);
-    Py_INCREF(value);
-    self->obj = value;
-    return 0;
-}
-
-// PyObject *RGBASurface_getData(RGBASurfaceObject *self, void *closure)
-// {
-//     return PyMemoryView_FromMemory((char *)self->data, self->stride * self->height, PyBUF_READ);
-// }
 
 PyGetSetDef RGBASurface_getsetters[] = {
-    {"obj", (getter)RGBASurface_getObj, (setter)RGBASurface_setObj,
-     "obj", NULL},
-    //{"data", (getter)RGBASurface_getData, NULL, "data", NULL},
-    // TODO - make obj editable
-    // {"m_Type", (getter)RGBASurface_getType, (setter)RGBASurface_setType,
-    //  "", NULL},
+    {"data", (getter)RGBASurface_getData, NULL, "data", NULL},
     {NULL} /* Sentinel */
 };
 
@@ -150,19 +96,63 @@ RGBASurface_repr(PyObject *self)
         node->surf.stride);
 }
 
-PyTypeObject RGBASurfaceType = []() -> PyTypeObject
+static int RGBASurface_getbuffer(RGBASurfaceObject *self, Py_buffer *view, int flags)
 {
-    PyTypeObject type = {PyObject_HEAD_INIT(NULL) 0};
-    type.tp_name = "RGBASurface";
-    type.tp_doc = PyDoc_STR("RGBASurface objects");
-    type.tp_basicsize = sizeof(RGBASurfaceObject);
-    type.tp_itemsize = 0;
-    type.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
-    type.tp_new = RGBASurface_new;
-    type.tp_init = (initproc)RGBASurface_init;
-    type.tp_dealloc = (destructor)RGBASurface_dealloc;
-    type.tp_members = RGBASurface_members;
-    type.tp_getset = RGBASurface_getsetters;
-    type.tp_repr = (reprfunc)RGBASurface_repr;
-    return type;
-}();
+    if (!view)
+    {
+        PyErr_SetString(PyExc_ValueError, "NULL view");
+        return -1;
+    }
+
+    view->buf = self->view.buf;
+    view->obj = reinterpret_cast<PyObject *>(self);
+    Py_INCREF(view->obj); // Retain ownership
+
+    view->len = self->view.len;
+    view->readonly = 0;
+    view->itemsize = sizeof(uint8_t);
+    view->format = "BBBB"; // RGBA components
+    view->ndim = 3;
+    view->shape = new Py_ssize_t[3]{
+        static_cast<Py_ssize_t>(self->surf.height),
+        static_cast<Py_ssize_t>(self->surf.width),
+        4 // RGBA
+    };
+    view->strides = new Py_ssize_t[3]{
+        static_cast<Py_ssize_t>(self->surf.stride),
+        static_cast<Py_ssize_t>(4 * sizeof(uint8_t)), // Pixel stride
+        sizeof(uint8_t)                               // Component stride
+    };
+    return 0;
+}
+
+static void RGBASurface_releasebuffer(PyObject *, Py_buffer *view)
+{
+    if (view)
+    {
+        delete[] view->shape;
+        delete[] view->strides;
+        view->shape = nullptr;
+        view->strides = nullptr;
+    }
+}
+
+PyType_Slot RGBASurfaceType_slots[] = {
+    {Py_tp_new, reinterpret_cast<void *>(PyType_GenericNew)},
+    {Py_tp_init, reinterpret_cast<void *>(RGBASurface_init)},
+    {Py_tp_dealloc, reinterpret_cast<void *>(RGBASurface_dealloc)},
+    {Py_tp_members, RGBASurface_members},
+    {Py_tp_getset, reinterpret_cast<void *>(RGBASurface_getsetters)},
+    {Py_bf_getbuffer, reinterpret_cast<void *>(RGBASurface_getbuffer)},
+    {Py_bf_releasebuffer, reinterpret_cast<void *>(RGBASurface_releasebuffer)},
+    {Py_tp_repr, reinterpret_cast<void *>(RGBASurface_repr)},
+    {0, NULL},
+};
+
+PyType_Spec RGBASurfaceType_Spec = {
+    "ispc_texcomp.RGBASurface",               // const char* name;
+    sizeof(RGBASurfaceObject),                // int basicsize;
+    0,                                        // int itemsize;
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE, // unsigned int flags;
+    RGBASurfaceType_slots,                    // PyType_Slot *slots;
+};

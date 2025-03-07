@@ -1,7 +1,0 @@
-include src/*.cpp
-include src/*.hpp
-
-include src/ISPCTextureCompressor/ispc_texcomp/*.cpp
-include src/ISPCTextureCompressor/ispc_texcomp/*.ispc
-include src/ISPCTextureCompressor/ispc_texcomp/*.def
-include src/ISPCTextureCompressor/ispc_texcomp/*.h

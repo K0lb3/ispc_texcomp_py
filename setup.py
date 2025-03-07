@@ -1,55 +1,17 @@
-from io import BytesIO
-import json
 import os
 import platform
-import re
-import tarfile
-from urllib.request import urlopen, Request
-import zipfile
 
-from setuptools import setup, Extension
+from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
+from wheel.bdist_wheel import bdist_wheel
 
-
-__version__ = "0.0.1"
-
-COMPILER_ZIP_REGEX = {
-    "Windows": r"ispc-v(.+?)-windows.zip",
-    "Darwin": r"ispc-v(.+?)-macOS.tar.gz",
-    "Linux": r"ispc-v(.+?)-linux.tar.gz",
-}
-
-
-def build():
-    setup(
-        name="ispc_texcomp_py",
-        version=__version__,
-        ext_modules=[
-            Extension(
-                name="ispc_texcomp_py",
-                sources=[
-                    "src/ispc_texcomp_py.cpp",
-                    "src/ISPCTextureCompressor/ispc_texcomp/ispc_texcomp.cpp",
-                    "src/ISPCTextureCompressor/ispc_texcomp/ispc_texcomp_astc.cpp",
-                    "src/ISPCTextureCompressor/ispc_texcomp/kernel.ispc",
-                    "src/ISPCTextureCompressor/ispc_texcomp/kernel_astc.ispc",
-                ],
-                # extra_objects=extra_objects,
-                language="c++",
-                include_dirs=["src/ISPCTextureCompressor/ispc_texcomp"],
-                define_macros=[("VERSION_INFO", __version__)],
-            ),
-        ],
-        cmdclass={"build_ext": build_ext_ispc},
-        zip_safe=False,
-    )
+from typing import List
 
 
 class build_ext_ispc(build_ext):
     def build_extension(self, ext):
         build_temp = os.path.realpath(self.build_temp)
-        # fetch ispc compiler
-        ispc = fetch_ispc_compiler(build_temp)
+
         # remove ispc files from sources
         ispc_files = []
         i = 0
@@ -60,7 +22,7 @@ class build_ext_ispc(build_ext):
                 i += 1
 
         # compile ispc files
-        extra_objects = self.build_ispc(ispc, ispc_files)
+        extra_objects = self.build_ispc(ispc_files)
         # add ispc objects to extra_objects for linking
         ext.extra_objects.extend(extra_objects)
         # add build_temp to include_dirs to include generated .h files
@@ -68,164 +30,84 @@ class build_ext_ispc(build_ext):
 
         super().build_extension(ext)
 
-    # def __del__(self):
-    # super().__del__()
-    # cleanup build dirs
-    # import shutil
-
-    # if os.path.exists(self.build_temp):
-    #     shutil.rmtree(self.build_temp)
-    # if os.path.exists(self.build_lib):
-    #     shutil.rmtree(self.build_lib)
-
-    def build_ispc(self, ispc, ispc_files):
-        system = platform.system()
-        machine = platform.machine()
-        arch = platform.architecture()[0]
-
-        if "arm" in machine:
-            if arch == "32bit":
-                arch = "arm32"
-            elif arch == "64bit":
-                arch = "arm64"
-
-        targets = []
-        if arch in ["arm64", "aarch64"]:
-            targets = ["neon-i32x4"]
-            arch = "aarch64"
-        elif arch == "arm32":
-            raise NotImplementedError("Building for arm32 is not supported.")
-        elif system == "Windows":
-            targets = ["sse2", "sse4", "avx", "avx2"]
-            if arch == "32bit":
-                arch = "x86"
-            else:
-                arch = "x86-64"
-        else:
-            targets = ["sse2", "avx"]
-            if arch == "32bit":
-                arch = "x86"
-            elif arch == "64bit":
-                arch = "x86_64"
-            else:
-                raise ValueError("Unknown architecture")
-        print(f"ISPC arch: {arch}")
-        extra_objects = []
+    def build_ispc(self, ispc_files: List[str]) -> List[str]:
+        extra_objects: List[str] = []
         for source in ispc_files:
-            extra_objects.extend(
-                self.compile_ispc(
-                    ispc,
-                    source,
-                    arch,
-                    targets,
-                )
-            )
+            name = os.path.basename(source)[:-5]
+            source = os.path.realpath(source)
+            output = os.path.realpath(os.path.join(self.build_temp, f"{name}.o"))
+            header = os.path.realpath(os.path.join(self.build_temp, f"{name}_ispc.h"))
+            self.run_ispc(source, output, header)
+            extra_objects.append(output)
         return extra_objects
 
-    def compile_ispc(self, ispc, source, arch, targets):
-        name = os.path.basename(source)
-        if name.endswith(".ispc"):
-            name = name[:-5]
-        else:
-            raise ValueError("ISPC file must end with .ispc")
-        outputs = [
-            os.path.join(self.build_temp, f"{name}.o"),
-            *[
-                os.path.join(self.build_temp, f"{name}_{target}.o")
-                for target in targets
-            ],
-        ]
-
-        if all(os.path.exists(output) for output in outputs):
-            print(f"ISPC file {name} already built")
-            return outputs
-
-        arguments = [
+    def run_ispc(self, src_fp: str, out_fp: str, header_fp: str):
+        os.makedirs(os.path.dirname(out_fp), exist_ok=True)
+        os.makedirs(os.path.dirname(header_fp), exist_ok=True)
+        self.spawn([
+            "ispc",
             "-O2",
-            source,
+            src_fp,
             "-o",
-            f"{self.build_temp}/{name}.o",
+            out_fp,
             "-h",
-            f"{self.build_temp}/{name}_ispc.h",
-            f"--arch={arch}" if arch else "",
-            f'--target={",".join(targets)}',
+            header_fp,
             "--opt=fast-math",
             "--pic",
-        ]
-        result = self.spawn([ispc] + arguments)
-        print(result)
-        return outputs
+        ])
 
 
-def fetch_ispc_compiler(target_dir: str = None):
-    """Fetches the ispc compiler from the official repository."""
+class bdist_wheel_abi3(bdist_wheel):
+    def get_tag(self):
+        python, abi, plat = super().get_tag()
+
+        if python.startswith("cp"):
+            # on CPython, our wheels are abi3 and compatible back to 3.7
+            return "cp311", "abi3", plat
+
+        return python, abi, plat
+
+
+def get_extra_compile_args():
     system = platform.system()
     if system == "Windows":
-        ispc_fp = os.path.join(target_dir, "ISPC", "win", "ispc.exe")
+        return ["/std:c++17"]
+    elif system == "Darwin":
+        return ["-std=c++17"]
     else:
-        ispc_fp = os.path.join(
-            target_dir, "ISPC", "linux" if system == "Linux" else "osx", "ispc"
-        )
-
-    if os.path.exists(ispc_fp):
-        print("ISPC compiler already exists")
-        return ispc_fp
-
-    print("Fetching ISPC compiler")
-    releases = json.loads(
-        urlopen("https://api.github.com/repos/ispc/ispc/releases").read()
-    )
-
-    pattern = re.compile(COMPILER_ZIP_REGEX[system])
-
-    url = None
-    version = None
-    for release in releases:
-        if release["prerelease"] or release["draft"]:
-            continue
-        for asset in release["assets"]:
-            match = pattern.match(asset["name"])
-            if match:
-                url = asset["browser_download_url"]
-                version = match.group(1)
-                break
-        if url:
-            break
-    else:
-        raise RuntimeError("No release found")
-
-    print("Downloading ispc compiler version {}".format(version))
-    raw_package = urlopen(Request(url, headers={"User-Agent": "Mozilla/5.0"})).read()
-
-    if system == "Windows":
-        ispc_fp = os.path.join(target_dir, "ISPC", "win", "ispc.exe")
-        os.makedirs(os.path.dirname(ispc_fp), exist_ok=True)
-        with zipfile.ZipFile(BytesIO(raw_package)) as zip_file:
-            for name in zip_file.namelist():
-                if name.endswith("bin/ispc.exe"):
-                    with open(ispc_fp, "wb") as f:
-                        f.write(zip_file.read(name))
-                    break
-            else:
-                raise RuntimeError("No ispc.exe found in the zip file")
-    else:
-        ispc_fp = os.path.join(
-            target_dir, "ISPC", "linux" if system == "Linux" else "osx", "ispc"
-        )
-        os.makedirs(os.path.dirname(ispc_fp), exist_ok=True)
-        with tarfile.open(fileobj=BytesIO(raw_package)) as tar_file:
-            for name in tar_file.getnames():
-                if name.endswith("bin/ispc"):
-                    with open(ispc_fp, "wb") as f:
-                        f.write(tar_file.extractfile(name).read())
-                    break
-            else:
-                raise RuntimeError("No ispc found in the tar file")
-        print("Making ispc executable")
-        os.system("chmod +x {}".format(ispc_fp))
-
-    return ispc_fp
+        return ["-std=c++17"]
 
 
-if __name__ == "__main__":
-    build()
+setup(
+    name="ispc_texcomp",
+    packages=["ispc_texcomp"],
+    package_data={"ispc_texcomp": ["*.py", "*.pyi", "py.typed"]},
+    include_package_data=True,
+    ext_modules=[
+        Extension(
+            name="ispc_texcomp._ispc_texcomp",
+            sources=[
+                "src/ispc_texcomp_py.cpp",
+                "src/ISPCTextureCompressor/ispc_texcomp/ispc_texcomp.cpp",
+                "src/ISPCTextureCompressor/ispc_texcomp/ispc_texcomp_astc.cpp",
+                "src/ISPCTextureCompressor/ispc_texcomp/kernel.ispc",
+                "src/ISPCTextureCompressor/ispc_texcomp/kernel_astc.ispc",
+            ],
+            depends=[
+                "src/rgba_surface_py.hpp",
+                "src/settings.hpp",
+                "src/ISPCTextureCompressor/ispc_texcomp/ispc_texcomp.h",
+                "src/ISPCTextureCompressor/ispc_texcomp/ispc_texcomp.def",
+            ],
+            language="c++",
+            include_dirs=["src/ISPCTextureCompressor/ispc_texcomp"],
+            extra_compile_args=get_extra_compile_args(),
+            define_macros=[
+                ("Py_LIMITED_API", "0x030b0000"),
+            ],
+            py_limited_api=True,
+        ),
+    ],
+    cmdclass={"build_ext": build_ext_ispc, "bdist_wheel": bdist_wheel_abi3},
+    zip_safe=False,
+)

@@ -5,117 +5,104 @@
 #include "rgba_surface_py.hpp"
 #include "settings.hpp"
 
-typedef void (*compress_f)(const rgba_surface *, uint8_t *dst);
-
-template <compress_f F, char ratio>
-static PyObject *py_compress(PyObject *self, PyObject *args)
+template <auto compress_func, size_t ratio>
+PyObject *py_compress(PyObject *self, PyObject *args) noexcept
 {
-    PyObject *py_src;
-    if (!PyArg_ParseTuple(args, "O", &py_src))
-        return NULL;
+    RGBASurfaceObject *py_src;
+    if (!PyArg_ParseTuple(args, "O!", RGBASurfaceObjectType, &py_src))
+        return nullptr;
 
-    if (!PyObject_TypeCheck(py_src, &RGBASurfaceType))
-    {
-        PyErr_SetString(PyExc_TypeError, "src must be a RGBASurface");
-        return NULL;
-    }
-
-    rgba_surface *src = &((RGBASurfaceObject *)py_src)->surf;
-    size_t size = src->width * src->height;
+    const auto &src = py_src->surf;
+    size_t size = src.width * src.height;
     if (ratio > 1)
     {
         size /= ratio;
     }
-    uint8_t *dst = (uint8_t *)PyMem_Malloc(size);
-    F(src, dst);
-    PyObject *result = PyBytes_FromStringAndSize((const char *)dst, size);
-    PyMem_Free(dst);
-    return result;
+    PyObject *result = PyBytes_FromStringAndSize(nullptr, size);
+    if (!result)
+        return nullptr;
+    uint8_t *dst = (uint8_t *)PyBytes_AsString(result);
+    Py_BEGIN_ALLOW_THREADS
+        compress_func(&src, dst);
+    Py_END_ALLOW_THREADS return result;
 }
 
-#define COMPRESS_W_SETTINGS(F, ratio, settings_object, settings_object_type, settings_type, name) \
-    static PyObject *py_compress_##name(PyObject *self, PyObject *args)                           \
-    {                                                                                             \
-        PyObject *py_src;                                                                         \
-        PyObject *py_settings;                                                                    \
-        if (!PyArg_ParseTuple(args, "OO", &py_src, &py_settings))                                 \
-            return NULL;                                                                          \
-        if (!PyObject_TypeCheck(py_src, &RGBASurfaceType))                                        \
-        {                                                                                         \
-            PyErr_SetString(PyExc_TypeError, "src must be a RGBASurface");                        \
-            return NULL;                                                                          \
-        }                                                                                         \
-        if (!PyObject_TypeCheck(py_settings, &settings_object_type))                            \
-        {                                                                                         \
-            PyErr_SetString(PyExc_TypeError, "src must be a " #settings_object_type);             \
-            return NULL;                                                                          \
-        }                                                                                         \
-        rgba_surface *src = &((RGBASurfaceObject *)py_src)->surf;                                 \
-        size_t size = src->width * src->height;                                                   \
-        if (ratio > 1)                                                                          \
-        {                                                                                         \
-            size /= ratio;                                                                        \
-        }                                                                                         \
-        uint8_t *dst = (uint8_t *)PyMem_Malloc(size);                                             \
-        settings_type *settings = &((settings_object *)py_settings)->settings;                \
-        F(src, dst, settings);                                                                  \
-        PyObject *result = PyBytes_FromStringAndSize((const char *)dst, size);                    \
-        PyMem_Free(dst);                                                                          \
-        return result;                                                                            \
-    };
+template <auto compress_func, class SettingsObject, PyTypeObject **SettingsObjectType>
+PyObject *py_compress_s(PyObject *self, PyObject *args) noexcept
+{
+    RGBASurfaceObject *py_src;
+    SettingsObject *py_settings;
+    if (!PyArg_ParseTuple(args, "O!O!", RGBASurfaceObjectType, &py_src, *SettingsObjectType, &py_settings))
+        return nullptr;
 
-COMPRESS_W_SETTINGS(CompressBlocksBC6H, 1, BC6HEncSettingsObject, BC6HEncSettingsType, bc6h_enc_settings, BC6H)
-COMPRESS_W_SETTINGS(CompressBlocksBC7, 1, BC7EncSettingsObject, BC7EncSettingsType, bc7_enc_settings, BC7)
-COMPRESS_W_SETTINGS(CompressBlocksETC1, 1, ETCEncSettingsObject, ETCEncSettingsType, etc_enc_settings, ETC1)
-COMPRESS_W_SETTINGS(CompressBlocksASTC, 1, ASTCEncSettingsObject, ASTCEncSettingsType, astc_enc_settings, ASTC)
+    const auto &src = py_src->surf;
+    size_t size = src.width * src.height;
+    PyObject *result = PyBytes_FromStringAndSize(nullptr, size);
+    if (!result)
+        return nullptr;
+    uint8_t *dst = (uint8_t *)PyBytes_AsString(result);
+    Py_BEGIN_ALLOW_THREADS
+        compress_func(&src, dst, &py_settings->settings);
+    Py_END_ALLOW_THREADS return result;
+}
 
 // Exported methods are collected in a table
-static struct PyMethodDef method_table[] = {
-    {"CompressBlocksBC1", (PyCFunction)py_compress<CompressBlocksBC1, 1>, METH_VARARGS, "compress a rgba_surface to "},
-    {"CompressBlocksBC3", (PyCFunction)py_compress<CompressBlocksBC3, 1>, METH_VARARGS, "compress a rgba_surface to "},
-    {"CompressBlocksBC4", (PyCFunction)py_compress<CompressBlocksBC4, 2>, METH_VARARGS, "compress a rgba_surface to "},
-    {"CompressBlocksBC5", (PyCFunction)py_compress<CompressBlocksBC5, 1>, METH_VARARGS, "compress a rgba_surface to "},
-    {"CompressBlocksBC6H", (PyCFunction)py_compress_BC6H, METH_VARARGS, "compress a rgba_surface to "},
-    {"CompressBlocksBC7", (PyCFunction)py_compress_BC7, METH_VARARGS, "compress a rgba_surface to "},
-    {"CompressBlocksETC1", (PyCFunction)py_compress_ETC1, METH_VARARGS, "compress a rgba_surface to "},
-    {"CompressBlocksASTC", (PyCFunction)py_compress_ASTC, METH_VARARGS, "compress a rgba_surface to "},
-    {NULL,
-     NULL,
-     0,
-     NULL} // Sentinel value ending the table
+constexpr PyMethodDef method_table[] = {
+    {"compress_blocks_bc1", py_compress<CompressBlocksBC1, 1>, METH_VARARGS, "compress a rgba_surface to bc1"},
+    {"compress_blocks_bc3", py_compress<CompressBlocksBC3, 1>, METH_VARARGS, "compress a rgba_surface to bc3"},
+    {"compress_blocks_bc4", py_compress<CompressBlocksBC4, 2>, METH_VARARGS, "compress a rgba_surface to bc4"},
+    {"compress_blocks_bc5", py_compress<CompressBlocksBC5, 1>, METH_VARARGS, "compress a rgba_surface to bc5"},
+    {"compress_blocks_bc6h", py_compress_s<CompressBlocksBC6H, BC6HEncSettingsObject, &BC6HEncSettingsObjectType>, METH_VARARGS, "compress a rgba_surface to bc6h"},
+    {"compress_blocks_bc7", py_compress_s<CompressBlocksBC7, BC7EncSettingsObject, &BC7EncSettingsObjectType>, METH_VARARGS, "compress a rgba_surface to bc7"},
+    {"compress_blocks_etc1", py_compress_s<CompressBlocksETC1, ETCEncSettingsObject, &ETCEncSettingsObjectType>, METH_VARARGS, "compress a rgba_surface to etc1"},
+    {"compress_blocks_astc", py_compress_s<CompressBlocksASTC, ASTCEncSettingsObject, &ASTCEncSettingsObjectType>, METH_VARARGS, "compress a rgba_surface to astc"},
+    {NULL, NULL, 0, NULL} // Sentinel value ending the table
 };
 
 // A struct contains the definition of a module
-static PyModuleDef ispc_texcomp_py_module = {
+PyModuleDef ispc_texcomp_module = {
     PyModuleDef_HEAD_INIT,
-    "ispc_texcomp_py", // Module name
-    "a python wrapper for Perfare's ispc_texcomp_py",
+    "ispc_texcomp._ispc_texcomp", // Module name
+    "Python bindings for ISPCTextureCompressor",
     -1, // Optional size of the module state memory
-    method_table,
+    const_cast<PyMethodDef *>(method_table),
     NULL, // Optional slot definitions
     NULL, // Optional traversal function
     NULL, // Optional clear function
     NULL  // Optional module deallocation function
 };
 
-static void add_type(PyObject *m, PyTypeObject *obj, const char *name)
+bool register_type(PyObject *module, PyTypeObject *type, const char *name) noexcept
 {
-    if (PyType_Ready(obj) < 0)
-        return;
-    Py_INCREF(obj);
-    PyModule_AddObject(m, name, (PyObject *)obj);
+    if (PyType_Ready(type) < 0)
+        return false;
+    Py_IncRef((PyObject *)type);
+    return PyModule_AddObject(module, name, reinterpret_cast<PyObject *>(type)) == 0;
 }
 
-// The module init function
-PyMODINIT_FUNC PyInit_ispc_texcomp_py(void)
+PyMODINIT_FUNC PyInit__ispc_texcomp()
 {
-    PyObject *m = PyModule_Create(&ispc_texcomp_py_module);
-    if (m == NULL)
-        return NULL;
-    add_type(m, &BC6HEncSettingsType, "BC6HEncSettings");
-    add_type(m, &BC7EncSettingsType, "BC7EncSettings");
-    add_type(m, &ETCEncSettingsType, "ETCEncSettings");
-    add_type(m, &ASTCEncSettingsType, "ASTCEncSettings");
-    add_type(m, &RGBASurfaceType, "RGBASurface");
+    auto *m = PyModule_Create(&ispc_texcomp_module);
+    if (!m)
+        return nullptr;
+
+    auto create_type = [&](PyType_Spec *spec, PyTypeObject **type, const char *name)
+    {
+        *type = reinterpret_cast<PyTypeObject *>(PyType_FromSpec(spec));
+        return *type && register_type(m, *type, name);
+    };
+
+    bool success = true;
+    success &= create_type(&BC6HEncSettingsType_Spec, &BC6HEncSettingsObjectType, "BC6HEncSettings");
+    success &= create_type(&BC7EncSettingsType_Spec, &BC7EncSettingsObjectType, "BC7EncSettings");
+    success &= create_type(&ETCEncSettingsType_Spec, &ETCEncSettingsObjectType, "ETCEncSettings");
+    success &= create_type(&ASTCEncSettingsType_Spec, &ASTCEncSettingsObjectType, "ASTCEncSettings");
+    success &= create_type(&RGBASurfaceType_Spec, &RGBASurfaceObjectType, "RGBASurface");
+
+    if (!success)
+    {
+        Py_DECREF(m);
+        return nullptr;
+    }
     return m;
 }

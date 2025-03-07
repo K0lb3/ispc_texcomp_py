@@ -5,19 +5,6 @@ Python bindings for ISPCTextureCompressor
 
 ## Installation
 
-```pip install ispc_texcomp_py```
-The setup will download the latest released ispc compiler from github.
-These released compilers don't cover all architectures.
-If you happen to have one of those uncovered architectures,
-then you have to do following:
-
-1. compile the ispc compiler
-2. clone this repo
-3. ``pip install conan cmake``
-3. run ``python setup.py install`` and let it fail on its own
-4. copy your compiles ispc compiler to /build/tmp..../ISPC/{win/linux/osx}/ispc(.exe for win)
-4.2 on Linux and MacOS make the ispc compiler executable
-5. run ``python setup.py install`` again - this time it should work
 
 ## Usage
 
