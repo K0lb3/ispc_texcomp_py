@@ -52,7 +52,7 @@ jobs:
       - name: Build wheels
         uses: joerick/cibuildwheel@v2.21.2
         env:
-          CIBW_BUILD: "cp311-win_amd64 cp311-musllinux_x86_64 cp311-macosx_x86_64"
+          CIBW_BUILD: "cp311-win_amd64 cp311-win32 cp311-win_arm64 cp311-musllinux_x86_64 cp311-musllinux_i686 cp311-macosx_x86_64"
           CIBW_TEST_SKIP: "*"
           CIBW_BEFORE_BUILD_LINUX: >
             apk add ispc
@@ -65,7 +65,7 @@ jobs:
           CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: >
             copy {wheel} {dest_dir} &&
             pipx run abi3audit --strict --report {wheel}
-        
+
       - uses: actions/upload-artifact@v4
         with:
           name: "${{ matrix.os }}-x64"

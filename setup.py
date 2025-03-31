@@ -9,7 +9,7 @@ from wheel.bdist_wheel import bdist_wheel
 ISPC_ARCH_MAP = (
     # --arch={x86, x86-64, arm, aarch64, xe64}]
     (("amd64", "x86_64"), "x86-64"),
-    (("win32", "x86"), "i686"),
+    (("win32", "i686", "x86"), "x86"),
     (("arm64", "aarch64"), "aarch64"),
     (
         (
