@@ -1,8 +1,5 @@
 [build-system]
-requires = [
-    "setuptools<72.2.0", # pp38 fails with higher setuptools
-    "wheel",
-]
+requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]

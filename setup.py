@@ -1,10 +1,10 @@
 import os
 import platform
-from typing import cast
+import sys
 
 from setuptools import Extension, setup
+from setuptools.command.bdist_wheel import bdist_wheel
 from setuptools.command.build_ext import build_ext
-from wheel.bdist_wheel import bdist_wheel
 
 ISPC_ARCH_MAP = (
     # --arch={x86, x86-64, arm, aarch64, xe64}]
@@ -23,8 +23,6 @@ ISPC_ARCH_MAP = (
 
 class build_ext_ispc(build_ext):
     def build_extension(self, ext: Extension):
-        build_temp = os.path.realpath(self.build_temp)
-
         # remove ispc files from sources
         ispc_files: list[str] = []
         i = 0
@@ -34,22 +32,51 @@ class build_ext_ispc(build_ext):
             else:
                 i += 1
 
-        # compile ispc files
-        extra_objects = self.build_ispc(ispc_files)
+        # check for precompiled ispc input dir
+        ispc_extra_objects: list[str]
+        ispc_include_dir: str
+
+        argv = sys.argv
+        if os.environ.get("CIBUILDWHEEL"):
+            plat_name: str = self.plat_name
+            for plat_archs, ispc_arch in ISPC_ARCH_MAP:
+                if plat_name.endswith(plat_archs):
+                    argv.append(f"--ispc_prebuild_dir=ispc_texcomp_{ispc_arch}")
+                    break
+            else:
+                raise ValueError("Couldn't identify the target architecture!")
+
+        for argv in argv:
+            if argv.startswith("--ispc_prebuild_dir"):
+                ispc_build_dir = argv.split("=", 1)[1].strip("\"'")
+                ispc_extra_objects = [
+                    os.path.join(ispc_build_dir, obj)
+                    for obj in os.listdir(ispc_build_dir)
+                    if obj.endswith(".o")
+                ]
+                ispc_include_dir = ispc_build_dir
+                break
+        else:
+            # compile ispc files
+            ispc_build_dir = os.path.join(self.build_temp, "ispc")
+            ispc_extra_objects = self.build_ispc(ispc_files, ispc_build_dir)
+            ispc_include_dir = os.path.realpath(ispc_build_dir)
+
         # add ispc objects to extra_objects for linking
-        ext.extra_objects.extend(extra_objects)
+        ext.extra_objects.extend(ispc_extra_objects)
         # add build_temp to include_dirs to include generated .h files
-        ext.include_dirs.append(build_temp)
+        ext.include_dirs.append(ispc_include_dir)
 
-        super().build_extension(ext)
+        super().build_extension(ext)  # type: ignore
 
-    def build_ispc(self, ispc_files: list[str]) -> list[str]:
+    def build_ispc(self, ispc_files: list[str], build_dir: str) -> list[str]:
         extra_objects: list[str] = []
         for source in ispc_files:
             name = os.path.basename(source)[:-5]
             source = os.path.realpath(source)
-            output = os.path.realpath(os.path.join(self.build_temp, f"{name}.o"))
-            header = os.path.realpath(os.path.join(self.build_temp, f"{name}_ispc.h"))
+            output = os.path.realpath(os.path.join(build_dir, f"{name}.o"))
+            header = os.path.realpath(os.path.join(build_dir, f"{name}_ispc.h"))
+
             self.run_ispc(source, output, header)
             extra_objects.append(output)
         return extra_objects
@@ -84,7 +111,7 @@ class build_ext_ispc(build_ext):
 
 class bdist_wheel_abi3(bdist_wheel):
     def get_tag(self) -> tuple[str, str, str]:
-        python, abi, plat = cast(tuple[str, str, str], super().get_tag())
+        python, abi, plat = super().get_tag()
 
         if python.startswith("cp"):
             # on CPython, our wheels are abi3 and compatible back to 3.7
