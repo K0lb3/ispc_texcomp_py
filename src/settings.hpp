@@ -300,7 +300,7 @@ PyType_Slot ETCEncSettingsType_slots[] = {
     {Py_tp_init, reinterpret_cast<void *>(ETCEncSettings_init)},
     {Py_tp_members, reinterpret_cast<void *>(ETCEncSettingsObject_members)},
     {Py_tp_repr, reinterpret_cast<void *>(ETCEncSettings_repr)},
-    {Py_tp_members, reinterpret_cast<void *>(ETCEncSettingsMethods)},
+    {Py_tp_methods, reinterpret_cast<void *>(ETCEncSettingsMethods)},
     {0, NULL},
 };
 
