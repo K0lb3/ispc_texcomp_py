@@ -14,7 +14,7 @@ PyObject *py_compress(PyObject *self, PyObject *args) noexcept
 
     const auto &src = py_src->surf;
     size_t size = src.width * src.height;
-    if (ratio > 1)
+    if constexpr(ratio > 1)
     {
         size /= ratio;
     }
