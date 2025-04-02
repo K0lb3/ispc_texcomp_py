@@ -37,9 +37,7 @@ def check_decompressed(bgra):
 
 def test_astc():
     block_size = (8, 8)
-    profile = ispc_texcomp.ASTCEncSettings(
-        block_width=8, block_height=8, profile="fast"
-    )
+    profile = ispc_texcomp.ASTCEncSettings.from_profile("fast", 8, 8)
     raw = ispc_texcomp.compress_blocks_astc(SURFACE, profile)
     bgra = texture2ddecoder.decode_astc(
         raw, SAMPLE_IMG.width, SAMPLE_IMG.height, *block_size
@@ -48,7 +46,7 @@ def test_astc():
 
 
 def test_etc1():
-    profile = ispc_texcomp.ETCEncSettings(profile="slow")
+    profile = ispc_texcomp.ETCEncSettings.from_profile("slow")
     raw = ispc_texcomp.compress_blocks_etc1(SURFACE, profile)
     bgra = texture2ddecoder.decode_etc1(raw, SAMPLE_IMG.width, SAMPLE_IMG.height)
     check_decompressed(bgra)
@@ -80,7 +78,7 @@ def test_bc3():
 
 
 def test_bc7():
-    profile = ispc_texcomp.BC7EncSettings(profile="fast")
+    profile = ispc_texcomp.BC7EncSettings.from_profile("fast")
     raw = ispc_texcomp.compress_blocks_bc7(SURFACE, profile)
     bgra = texture2ddecoder.decode_bc7(raw, SAMPLE_IMG.width, SAMPLE_IMG.height)
     check_decompressed(bgra)
