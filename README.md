@@ -15,60 +15,77 @@ Python bindings for ISPCTextureCompressor.
 
 ispc has to be available in the PATH for setup.py to work.
 
-## Usage
+## Example
+## Example: Compressing Textures with Quality Profiles
 
 ```python
+from pathlib import Path
 from PIL import Image
-import ispc_texcomp_py
+import ispc_texcomp_py as itc
 
-# get the rgba data (of an image you want to compress)
-img = Image.open(fp)
-rgba = Image.tobytes("raw", "RGBA")
+# 1. Load Image and Prepare Surface
+img_path = Path("texture.png")
+with Image.open(img_path) as img:
+    # Convert to RGBA if necessary (library requires 32bpp RGBA)
+    if img.mode != "RGBA":
+        img = img.convert("RGBA")
+        
+    # Create surface with automatic stride calculation
+    surface = itc.RGBASurface(
+        img.tobytes("raw", "RGBA"),
+        img.width,
+        img.height,
+        stride = img.width * 4  # 4 bytes per pixel (RGBA)
+    )
 
-# create a RGBASurface
-stride = img.width * 4
-surface = ispc_texcomp_py.RGBASurface(rgba, img.width, img.height, stride)
+# 2. Basic Compression (No Profiles)
+# ------------------------------------------------------------------
+print("Compressing with basic formats...")
 
+# BC1 (DXT1 equivalent) - 4bpp RGB with 1-bit alpha
+bc1_data = itc.compress_blocks_bc1(surface)
+print(f"BC1 size: {len(bc1_data)//1024} KB")
 
-# compress the surface (no profile)
+# BC3 (DXT5 equivalent) - 8bpp RGBA with explicit alpha
+bc3_data = itc.compress_blocks_bc3(surface)
+print(f"BC3 size: {len(bc3_data)//1024} KB")
 
-# BC1
-bc1_compressed: bytes = ispc_texcomp_py.CompressBlocksBC1(surface)
+# BC4 (RGTC R-channel) - 4bpp single channel
+bc4_data = itc.compress_blocks_bc4(surface)
+print(f"BC4 size: {len(bc4_data)//1024} KB")
 
-# BC3
-bc3_compressed: bytes = ispc_texcomp_py.CompressBlocksBC3(surface)
+# BC5 (RGTC RG-channels) - 8bpp two channels
+bc5_data = itc.compress_blocks_bc5(surface)
+print(f"BC5 size: {len(bc5_data)//1024} KB")
 
-# BC3
-bc4_compressed: bytes = ispc_texcomp_py.CompressBlocksBC4(surface)
-
-# BC5
-bc5_compressed: bytes = ispc_texcomp_py.CompressBLocksBC5(surface)
-
-
-# compress the surface (with profile)
-
-# BC6h
-# profile options:
-#   veryfast, fast, basic, slow, veryslow
-profile = ispc_texcomp_py.BC6HEncSettings.from_profile("fast")
-bc6h_compressed: bytes = ispc_texcomp_py.CompressBlocksBC6H(surface, profile)
-
-# BC7
-# profile options:
-#   ultrafast, veryfast, fast, basic, slow,
-#   alpha_ultrafast, alpha_veryfast, alpha_fast, alpha_basic, alpha_slow
-profile = ispc_texcomp_py.BC7EncSettings.from_profile("fast")
-bc7_compressed: bytes = ispc_texcomp_py.CompressBlocksBC7(surface, profile)
+# 3. Advanced Compression with Quality Profiles
+# ------------------------------------------------------------------
+print("\nCompressing with quality profiles...")
 
 # ETC1
-# profile options:
-#   slow
-profile = ispc_texcomp_py.ETCEncSettings.from_profile("slow")
-etc1_compressed: bytes = ispc_texcomp_py.CompressBlocksETC1(surface, profile)
+# ETC1 Profiles: slow
+etc_profile = itc.ETCEncSettings.from_profile("slow")
+bc6h_data = itc.compress_blocks_etc1(surface, etc_profile)
+print(f"ETC size: {len(bc6h_data)//1024} KB")
 
-# ASTC
-# profile options:
-#   fast, alpha_fast, alpha_slow
-profile = ispc_texcomp_py.ASTCEncSettings.from_profile("fas", 8, 8)
-astc_compressed: bytes = ispc_texcomp_py.CompressBlocksASTC(surface, profile)
+# BC6H (HDR Format)
+# BC6H Profiles: veryfast | fast | basic | slow | veryslow
+bc6h_profile = itc.BC6HEncSettings.from_profile("fast")
+# the surface has to contain FP16 data instead of U8 RGBA!
+bc6h_data = itc.compress_blocks_bc6h(surface, bc6h_profile)
+print(f"BC6H size: {len(bc6h_data)//1024} KB")
+
+# BC7 (High Quality RGBA)
+# BC7 Profiles: ultrafast | veryfast | fast | basic | slow
+#   for alpha support prepend alpha_
+bc7_profile = itc.BC7EncSettings.from_profile("alpha_fast")
+bc7_data = itc.compress_blocks_bc7(surface, bc7_profile)
+print(f"BC7 size: {len(bc7_data)//1024} KB")
+
+# ASTC (LDR, 4x4 to 8x8 blocks)
+# ASTC Profiles: fast, alpha_fast, alpha_slow
+# ASTC Block Sizes: 4x4, 5x5, 6x6, 8x8, etc. (must be valid combinations)
+astc_profile = itc.ASTCEncSettings.from_profile("fast", 8, 8)
+astc_data = itc.compress_blocks_astc(surface, astc_profile)
+print(f"ASTC 8x8 size: {len(astc_data)//1024} KB")
 ```

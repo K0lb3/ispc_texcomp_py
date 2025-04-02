@@ -471,6 +471,8 @@ def compress_blocks_bc6h(rgba: RGBASurface, settings: BC6HEncSettings) -> bytes:
     """
     Compress an RGBA surface to BC6 texture blocks.
 
+    The data of RGBA surface has to be FP16 instead of RGBA U8!
+
     Parameters
     ----------
     rgba : RGBASurface
