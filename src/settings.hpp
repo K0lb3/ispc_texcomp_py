@@ -32,29 +32,43 @@ typedef struct
 } ASTCEncSettingsObject;
 
 template <class SettingsObject, auto &ProfileMap>
-static PyObject *settings_from_profile(PyObject *cls, PyObject *args)
+static PyObject *settings_from_profile(PyObject *cls, PyObject *profile_py)
 {
-    char *profile = NULL;
-
-    if (!PyArg_ParseTuple(args, "s", &profile))
+    // Validate input type
+    if (!PyUnicode_Check(profile_py))
     {
-        return NULL;
+        PyErr_SetString(PyExc_TypeError, "Profile must be a string");
+        return nullptr;
     }
 
-    auto it = ProfileMap.find(profile);
-    if (it != ProfileMap.end())
+    // Get UTF-8 C string
+    const char *profile = PyUnicode_AsUTF8AndSize(profile_py, nullptr);
+    if (!profile)
+        return nullptr;
+
+    try
     {
-        PyObject *settings_py = PyType_GenericNew((PyTypeObject *)cls, NULL, NULL);
-        if (!settings_py)
+        // UTF-8 comparison with C++ map
+        auto it = ProfileMap.find(profile);
+        if (it == ProfileMap.end())
         {
-            return NULL;
+            PyErr_Format(PyExc_ValueError, "Invalid profile: '%s'", profile);
+            return nullptr;
         }
+
+        // Create Python object
+        PyObject *settings_py = PyType_GenericNew(reinterpret_cast<PyTypeObject *>(cls), nullptr, nullptr);
+        if (!settings_py)
+            return nullptr;
+
+        // Initialize C++ settings
         it->second(&(reinterpret_cast<SettingsObject *>(settings_py)->settings));
+
         return settings_py;
     }
-    else
+    catch (const std::exception &e)
     {
-        PyErr_SetString(PyExc_ValueError, "Invalid profile");
+        PyErr_SetString(PyExc_RuntimeError, e.what());
         return nullptr;
     }
 }
@@ -87,10 +101,10 @@ int BC7EncSettings_init(BC7EncSettingsObject *self, PyObject *args, PyObject *kw
         "mode45_channel0",
         "refine_iterations_channel",
         "channels",
-        NULL};
+        nullptr};
     int skip_mode2 = 0;
-    PyObject *mode_selection = NULL;
-    PyObject *refineIterations = NULL;
+    PyObject *mode_selection = nullptr;
+    PyObject *refineIterations = nullptr;
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "OObiiiiii", const_cast<char **>(kwlist),
                                      &mode_selection,
                                      &refineIterations,
@@ -105,7 +119,7 @@ int BC7EncSettings_init(BC7EncSettingsObject *self, PyObject *args, PyObject *kw
 
     self->settings.skip_mode2 = skip_mode2 == 1;
 
-    if (mode_selection != NULL)
+    if (mode_selection != nullptr)
     {
         if (!PyList_Check(mode_selection))
         {
@@ -124,7 +138,7 @@ int BC7EncSettings_init(BC7EncSettingsObject *self, PyObject *args, PyObject *kw
         }
     }
 
-    if (refineIterations != NULL)
+    if (refineIterations != nullptr)
     {
         if (!PyList_Check(refineIterations))
         {
@@ -156,7 +170,7 @@ PyMemberDef BC7EncSettingsObject_members[] = {
     {"mode45_channel0", T_INT, offsetof(BC7EncSettingsObject, settings.mode45_channel0), 0, "mode45_channel0"},
     {"refine_iterations_channel", T_INT, offsetof(BC7EncSettingsObject, settings.refineIterations_channel), 0, "refineIterations_channel"},
     {"channels", T_INT, offsetof(BC7EncSettingsObject, settings.channels), 0, "channels"},
-    {NULL} /* Sentinel */
+    {nullptr} /* Sentinel */
 };
 
 // TODO getset for mode_selection and refineIterations
@@ -176,7 +190,7 @@ PyObject *BC7EncSettings_repr(BC7EncSettingsObject *self)
 
 static PyMethodDef BC7EncSettingsMethods[] = {
     {"from_profile", settings_from_profile<BC7EncSettingsObject, bc7_profile_map>, METH_O | METH_CLASS, ""},
-    {NULL, NULL, 0, NULL} /* Sentinel */
+    {nullptr, nullptr, 0, nullptr} /* Sentinel */
 };
 
 PyType_Slot BC7EncSettingsType_slots[] = {
@@ -185,7 +199,7 @@ PyType_Slot BC7EncSettingsType_slots[] = {
     {Py_tp_members, reinterpret_cast<void *>(BC7EncSettingsObject_members)},
     {Py_tp_repr, reinterpret_cast<void *>(BC7EncSettings_repr)},
     {Py_tp_methods, reinterpret_cast<void *>(BC7EncSettingsMethods)},
-    {0, NULL},
+    {0, nullptr},
 };
 
 PyType_Spec BC7EncSettingsType_Spec = {
@@ -210,7 +224,7 @@ std::unordered_map<std::string, GetProfile_bc6h> bc6h_profile_map = {
 
 int BC6HEncSettings_init(BC6HEncSettingsObject *self, PyObject *args, PyObject *kwds)
 {
-    static const char *kwlist[] = {"slow_mode", "fast_mode", "refine_iterations_1p", "refine_iterations_2p", "fast_skip_treshold", NULL};
+    static const char *kwlist[] = {"slow_mode", "fast_mode", "refine_iterations_1p", "refine_iterations_2p", "fast_skip_treshold", nullptr};
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "bbiii", const_cast<char **>(kwlist),
                                      &self->settings.slow_mode,
                                      &self->settings.fast_mode,
@@ -227,7 +241,7 @@ PyMemberDef BC6HEncSettingsObject_members[] = {
     {"refine_iterations_1p", T_INT, offsetof(BC6HEncSettingsObject, settings.refineIterations_1p), 0, "refineIterations_1p"},
     {"refine_iterations_2p", T_INT, offsetof(BC6HEncSettingsObject, settings.refineIterations_2p), 0, "refineIterations_2p"},
     {"fast_skip_treshold", T_INT, offsetof(BC6HEncSettingsObject, settings.fastSkipTreshold), 0, "fastSkipTreshold"},
-    {NULL} /* Sentinel */
+    {nullptr} /* Sentinel */
 };
 
 PyObject *BC6HEncSettings_repr(BC6HEncSettingsObject *self)
@@ -242,7 +256,7 @@ PyObject *BC6HEncSettings_repr(BC6HEncSettingsObject *self)
 
 static PyMethodDef BC6HEncSettingsMethods[] = {
     {"from_profile", settings_from_profile<BC6HEncSettingsObject, bc6h_profile_map>, METH_O | METH_CLASS, ""},
-    {NULL, NULL, 0, NULL} /* Sentinel */
+    {nullptr, nullptr, 0, nullptr} /* Sentinel */
 };
 
 PyType_Slot BC6HEncSettingsType_slots[] = {
@@ -251,7 +265,7 @@ PyType_Slot BC6HEncSettingsType_slots[] = {
     {Py_tp_members, reinterpret_cast<void *>(BC6HEncSettingsObject_members)},
     {Py_tp_repr, reinterpret_cast<void *>(BC6HEncSettings_repr)},
     {Py_tp_methods, reinterpret_cast<void *>(BC6HEncSettingsMethods)},
-    {0, NULL},
+    {0, nullptr},
 };
 
 PyType_Spec BC6HEncSettingsType_Spec = {
@@ -272,7 +286,7 @@ std::unordered_map<std::string, GetProfile_etc> etc_profile_map = {
 
 int ETCEncSettings_init(ETCEncSettingsObject *self, PyObject *args, PyObject *kwds)
 {
-    static const char *kwlist[] = {"fast_skip_treshold", NULL};
+    static const char *kwlist[] = {"fast_skip_treshold", nullptr};
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "i", const_cast<char **>(kwlist),
                                      &self->settings.fastSkipTreshold))
         return -1;
@@ -281,7 +295,7 @@ int ETCEncSettings_init(ETCEncSettingsObject *self, PyObject *args, PyObject *kw
 
 PyMemberDef ETCEncSettingsObject_members[] = {
     {"fast_skip_treshold", T_INT, offsetof(ETCEncSettingsObject, settings.fastSkipTreshold), 0, "fastSkipTreshold"},
-    {NULL} /* Sentinel */
+    {nullptr} /* Sentinel */
 };
 
 PyObject *ETCEncSettings_repr(ETCEncSettingsObject *self)
@@ -292,7 +306,7 @@ PyObject *ETCEncSettings_repr(ETCEncSettingsObject *self)
 
 static PyMethodDef ETCEncSettingsMethods[] = {
     {"from_profile", settings_from_profile<ETCEncSettingsObject, etc_profile_map>, METH_O | METH_CLASS, ""},
-    {NULL, NULL, 0, NULL} /* Sentinel */
+    {nullptr, nullptr, 0, nullptr} /* Sentinel */
 };
 
 PyType_Slot ETCEncSettingsType_slots[] = {
@@ -301,7 +315,7 @@ PyType_Slot ETCEncSettingsType_slots[] = {
     {Py_tp_members, reinterpret_cast<void *>(ETCEncSettingsObject_members)},
     {Py_tp_repr, reinterpret_cast<void *>(ETCEncSettings_repr)},
     {Py_tp_methods, reinterpret_cast<void *>(ETCEncSettingsMethods)},
-    {0, NULL},
+    {0, nullptr},
 };
 
 PyType_Spec ETCEncSettingsType_Spec = {
@@ -324,7 +338,7 @@ std::unordered_map<std::string, GetProfile_astc> astc_profile_map = {
 
 int ASTCEncSettings_init(ASTCEncSettingsObject *self, PyObject *args, PyObject *kwds)
 {
-    static const char *kwlist[] = {"block_width", "block_height", "channels", "fast_skip_treshold", "refine_iterations", NULL};
+    static const char *kwlist[] = {"block_width", "block_height", "channels", "fast_skip_treshold", "refine_iterations", nullptr};
     self->settings.block_width = 4;
     self->settings.block_height = 4;
 
@@ -351,7 +365,7 @@ PyMemberDef ASTCEncSettingsObject_members[] = {
     {"channels", T_INT, offsetof(ASTCEncSettingsObject, settings.channels), 0, "channels"},
     {"fast_skip_treshold", T_INT, offsetof(ASTCEncSettingsObject, settings.fastSkipTreshold), 0, "fastSkipTreshold"},
     {"refine_iterations", T_INT, offsetof(ASTCEncSettingsObject, settings.refineIterations), 0, "refineIterations"},
-    {NULL} /* Sentinel */
+    {nullptr} /* Sentinel */
 };
 
 PyObject *ASTCEncSettings_repr(ASTCEncSettingsObject *self)
@@ -366,13 +380,13 @@ PyObject *ASTCEncSettings_repr(ASTCEncSettingsObject *self)
 
 static PyObject *ASTC_settings_from_profile(PyObject *cls, PyObject *args)
 {
-    char *profile = NULL;
+    char *profile = nullptr;
     int block_width;
     int block_height;
 
     if (!PyArg_ParseTuple(args, "sii", &profile, &block_width, &block_height))
     {
-        return NULL;
+        return nullptr;
     }
 
     // Validate block size
@@ -385,10 +399,10 @@ static PyObject *ASTC_settings_from_profile(PyObject *cls, PyObject *args)
     auto it = astc_profile_map.find(profile);
     if (it != astc_profile_map.end())
     {
-        PyObject *settings_py = PyType_GenericNew((PyTypeObject *)cls, NULL, NULL);
+        PyObject *settings_py = PyType_GenericNew((PyTypeObject *)cls, nullptr, nullptr);
         if (!settings_py)
         {
-            return NULL;
+            return nullptr;
         }
         it->second(&(reinterpret_cast<ASTCEncSettingsObject *>(settings_py)->settings), block_width, block_height);
         return settings_py;
@@ -402,7 +416,7 @@ static PyObject *ASTC_settings_from_profile(PyObject *cls, PyObject *args)
 
 static PyMethodDef ASTCEncSettingsMethods[] = {
     {"from_profile", ASTC_settings_from_profile, METH_VARARGS | METH_CLASS, ""},
-    {NULL, NULL, 0, NULL} /* Sentinel */
+    {nullptr, nullptr, 0, nullptr} /* Sentinel */
 };
 
 PyType_Slot ASTCEncSettingsType_slots[] = {
@@ -411,7 +425,7 @@ PyType_Slot ASTCEncSettingsType_slots[] = {
     {Py_tp_members, reinterpret_cast<void *>(ASTCEncSettingsObject_members)},
     {Py_tp_repr, reinterpret_cast<void *>(ASTCEncSettings_repr)},
     {Py_tp_methods, reinterpret_cast<void *>(ASTCEncSettingsMethods)},
-    {0, NULL},
+    {0, nullptr},
 };
 
 PyType_Spec ASTCEncSettingsType_Spec = {
