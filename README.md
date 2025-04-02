@@ -2,8 +2,7 @@
 
 [![Win/Mac/Linux](https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-informational)]()
 [![MIT](https://img.shields.io/github/license/K0lb3/ispc_texcomp_py)](https://github.com/K0lb3/ispc_texcomp_py/blob/master/LICENSE)
-[![Docs](https://github.com/K0lb3/ispc_texcomp_py/actions/workflows/doc.yml/badge.svg?branch=master)](k0lb3.github.io/ispc_texcomp_py/)
-
+[![Docs](https://github.com/K0lb3/ispc_texcomp_py/actions/workflows/doc.yml/badge.svg?branch=master)](https://k0lb3.github.io/ispc_texcomp_py/ispc_texcomp.html)
 
 Python bindings for ISPCTextureCompressor.
 
